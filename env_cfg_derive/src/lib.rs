@@ -204,13 +204,12 @@ fn generate_field_assignment(
     for attr in &field.attrs {
         if attr.path().is_ident("env_cfg") {
             if let Meta::List(meta_list) = &attr.meta {
-                let nested_result = meta_list.parse_args_with(
+                let nested_metas = meta_list.parse_args_with(
                     syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
-                );
+                )?;
 
-                if let Ok(nested_metas) = nested_result {
-                    for nested in nested_metas {
-                        match nested {
+                for nested in nested_metas {
+                    match nested {
                             Meta::Path(path) if path.is_ident("skip") => {
                                 skip = true;
                             }
@@ -244,7 +243,6 @@ fn generate_field_assignment(
                             }
                         }
                     }
-                }
             }
         }
     }

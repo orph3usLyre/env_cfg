@@ -112,7 +112,10 @@ fn should_propagate_nested_config_errors() {
         assert_eq!(struct_name, "DatabaseConfig");
         assert!(matches!(*inner, EnvConfigError::Parse(_, _)));
     } else {
-        panic!("Expected Nested error wrapping a Parse error, got: {:?}", result);
+        panic!(
+            "Expected Nested error wrapping a Parse error, got: {:?}",
+            result
+        );
     }
 }
 
@@ -130,7 +133,10 @@ fn should_fail_when_nested_required_vars_missing() {
         assert_eq!(struct_name, "DatabaseConfig");
         assert!(matches!(*inner, EnvConfigError::Missing(_)));
     } else {
-        panic!("Expected Nested error wrapping a Missing error, got: {:?}", result);
+        panic!(
+            "Expected Nested error wrapping a Missing error, got: {:?}",
+            result
+        );
     }
 }
 
