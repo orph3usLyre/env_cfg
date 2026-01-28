@@ -53,6 +53,12 @@ impl PrefixConfig {
 /// - `#[env_cfg(parse_with = "function_name")]` - use custom parser function (signature: `fn(String) -> T`)
 /// - `#[env_cfg(nested)]` - treat field as nested EnvConfig struct (calls T::from_env())
 ///
+/// # Feature: `trace`
+///
+/// When the `trace` feature is enabled, the generated `from_env()` method will emit a
+/// `tracing::trace!` event with the loaded configuration struct. This requires the struct
+/// to implement `Debug`.
+///
 #[proc_macro_derive(EnvConfig, attributes(env_cfg))]
 pub fn derive_env_cfg(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -108,7 +114,9 @@ fn expand_env_cfg(
                     #(#field_assignments,)*
                 };
                 #[cfg(feature = "trace")]
-                ::tracing::trace!(config = ?__result, "loaded {}", #name_str);
+                {
+                    ::tracing::trace!(config = ?__result, "loaded {}", #name_str);
+                }
                 Ok(__result)
             }
         }
