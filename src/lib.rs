@@ -267,15 +267,30 @@ where
 
 /// Log the loaded configuration using tracing.
 ///
-/// This function is called by the generated `from_env()` implementation.
+/// This macro is called by the generated `from_env()` implementation.
 /// When the `trace` feature is enabled, it emits a `tracing::trace!` event.
-/// When the feature is disabled, this is a no-op that gets optimized away.
+/// When the feature is disabled, this is a no-op.
+///
+/// Using a macro avoids requiring `Debug` on the config type when tracing is disabled.
 #[doc(hidden)]
-#[inline]
-pub fn trace_config<T: std::fmt::Debug>(config: &T, name: &str) {
-    #[cfg(feature = "trace")]
-    {
-        tracing::trace!(config = ?config, "loaded {}", name);
-    }
-    let _ = (config, name);
+#[macro_export]
+#[cfg(feature = "trace")]
+macro_rules! trace_config {
+    ($config:expr, $name:expr) => {
+        ::tracing::trace!(config = ?$config, "loaded {}", $name);
+    };
+}
+
+/// Log the loaded configuration using tracing.
+///
+/// This macro is called by the generated `from_env()` implementation.
+/// When the `trace` feature is enabled, it emits a `tracing::trace!` event.
+/// When the feature is disabled, this is a no-op.
+///
+/// Using a macro avoids requiring `Debug` on the config type when tracing is disabled.
+#[doc(hidden)]
+#[macro_export]
+#[cfg(not(feature = "trace"))]
+macro_rules! trace_config {
+    ($config:expr, $name:expr) => {};
 }
