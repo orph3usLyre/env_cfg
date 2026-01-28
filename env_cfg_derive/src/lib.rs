@@ -74,6 +74,7 @@ fn expand_env_cfg(
     prefix_config: &PrefixConfig,
 ) -> syn::Result<proc_macro2::TokenStream> {
     let name = &input.ident;
+    let name_str = name.to_string();
     let fields = match &input.data {
         Data::Struct(data) => match &data.fields {
             Fields::Named(fields) => &fields.named,
@@ -103,9 +104,12 @@ fn expand_env_cfg(
             type Error = ::env_cfg::EnvConfigError;
 
             fn from_env() -> Result<Self, Self::Error> {
-                Ok(Self {
+                let __result = Self {
                     #(#field_assignments,)*
-                })
+                };
+                #[cfg(feature = "trace")]
+                ::tracing::trace!(config = ?__result, "loaded {}", #name_str);
+                Ok(__result)
             }
         }
     };
