@@ -167,6 +167,16 @@ pub enum EnvConfigError {
     Parse(String, String),
 }
 
+/// Convert a `std::env::VarError` to an `EnvConfigError`.
+fn var_error_to_env_config_error(name: &str, err: std::env::VarError) -> EnvConfigError {
+    match err {
+        std::env::VarError::NotPresent => EnvConfigError::Missing(name.to_string()),
+        std::env::VarError::NotUnicode(_) => {
+            EnvConfigError::Parse(name.to_string(), "Invalid Unicode".to_string())
+        }
+    }
+}
+
 // Helper functions for implementing the trait
 /// Load a required environment variable and parse it to the target type.
 /// Fails if the variable is not set or cannot be parsed.
@@ -175,7 +185,7 @@ where
     T: FromStr,
     T::Err: std::fmt::Display,
 {
-    let value = std::env::var(name).map_err(|_| EnvConfigError::Missing(name.to_string()))?;
+    let value = std::env::var(name).map_err(|e| var_error_to_env_config_error(name, e))?;
     value
         .parse::<T>()
         .map_err(|e| EnvConfigError::Parse(name.to_string(), e.to_string()))
@@ -194,10 +204,7 @@ where
             .map(Some)
             .map_err(|e| EnvConfigError::Parse(name.to_string(), e.to_string())),
         Err(std::env::VarError::NotPresent) => Ok(None),
-        Err(std::env::VarError::NotUnicode(_)) => Err(EnvConfigError::Parse(
-            name.to_string(),
-            "Invalid Unicode".to_string(),
-        )),
+        Err(e) => Err(var_error_to_env_config_error(name, e)),
     }
 }
 
@@ -226,10 +233,7 @@ where
         Err(std::env::VarError::NotPresent) => default
             .parse::<T>()
             .map_err(|e| EnvConfigError::Parse(format!("default for {}", name), e.to_string())),
-        Err(std::env::VarError::NotUnicode(_)) => Err(EnvConfigError::Parse(
-            name.to_string(),
-            "Invalid Unicode".to_string(),
-        )),
+        Err(e) => Err(var_error_to_env_config_error(name, e)),
     }
 }
 
@@ -258,9 +262,6 @@ where
     match std::env::var(name) {
         Ok(value) => Ok(Some(parser(value))),
         Err(std::env::VarError::NotPresent) => Ok(None),
-        Err(std::env::VarError::NotUnicode(_)) => Err(EnvConfigError::Parse(
-            name.to_string(),
-            "Invalid Unicode".to_string(),
-        )),
+        Err(e) => Err(var_error_to_env_config_error(name, e)),
     }
 }
