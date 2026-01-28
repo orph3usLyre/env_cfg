@@ -165,6 +165,9 @@ pub enum EnvConfigError {
     /// Failed to parse environment variable value.
     #[error("Failed to parse environment variable: '{0}': {1}")]
     Parse(String, String),
+    /// Error from a nested EnvConfig struct.
+    #[error("Nested config `{0}` failed: {1}")]
+    Nested(String, Box<EnvConfigError>),
 }
 
 /// Convert a `std::env::VarError` to an `EnvConfigError`.

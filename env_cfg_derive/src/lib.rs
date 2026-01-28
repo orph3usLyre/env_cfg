@@ -282,9 +282,9 @@ fn generate_field_assignment(
     if is_nested {
         return Ok(quote! {
             #field_name: #field_type::from_env()
-                .map_err(|e| ::env_cfg::EnvConfigError::Parse(
-                    format!("nested {}", stringify!(#field_type)),
-                    e.to_string()
+                .map_err(|e| ::env_cfg::EnvConfigError::Nested(
+                    stringify!(#field_type).to_string(),
+                    Box::new(e)
                 ))?
         });
     }
