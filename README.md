@@ -115,11 +115,33 @@ fn main() -> Result<(), env_cfg::EnvConfigError> {
 - **`#[env_cfg(parse_with = "function_name")]`**: Use custom parser function (takes `String`, returns `T`)
 - **`#[env_cfg(nested)]`**: Treat field as nested EnvConfig struct (calls `T::from_env()`)
 
+## Dependency
+
+Add this to your `Cargo.toml`:
+
+```toml
+[dependencies]
+env_cfg = "0.2"
+```
+
+## Features
+
+### `trace`
+
+Enable the `trace` feature to emit `tracing::trace!` events when loading configuration:
+
+```toml
+[dependencies]
+env_cfg = { version = "0.2.1", features = ["trace"] }
+```
+
+When enabled, the generated `from_env()` method will emit a trace event with the loaded configuration struct. Note: This requires the struct to implement `Debug`.
+
 ## Error variants
 
 - `EnvConfigError::Missing(String)`: Environment variable is not set (Key)
 - `EnvConfigError::Parse(String, String)`: Failed to parse value (Key, Value)
-
+- `EnvConfigError::Nested(String, Box<EnvConfigError>)`: Error from a nested EnvConfig struct (Field type name, Underlying error)
 
 ### License
 
