@@ -113,10 +113,7 @@ fn expand_env_cfg(
                 let __result = Self {
                     #(#field_assignments,)*
                 };
-                #[cfg(feature = "trace")]
-                {
-                    ::tracing::trace!(config = ?__result, "loaded {}", #name_str);
-                }
+                ::env_cfg::trace_config(&__result, #name_str);
                 Ok(__result)
             }
         }

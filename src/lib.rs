@@ -264,3 +264,18 @@ where
         Err(e) => Err(var_error_to_env_config_error(name, e)),
     }
 }
+
+/// Log the loaded configuration using tracing.
+///
+/// This function is called by the generated `from_env()` implementation.
+/// When the `trace` feature is enabled, it emits a `tracing::trace!` event.
+/// When the feature is disabled, this is a no-op that gets optimized away.
+#[doc(hidden)]
+#[inline]
+pub fn trace_config<T: std::fmt::Debug>(config: &T, name: &str) {
+    #[cfg(feature = "trace")]
+    {
+        tracing::trace!(config = ?config, "loaded {}", name);
+    }
+    let _ = (config, name);
+}
