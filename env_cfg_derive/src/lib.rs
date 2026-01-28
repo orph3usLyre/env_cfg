@@ -23,15 +23,17 @@ enum PrefixConfig {
 }
 
 impl PrefixConfig {
-    fn apply_to_field(&self, field_name: &str) -> String {
+    fn as_prefix(&self) -> Option<&str> {
         match self {
-            PrefixConfig::StructName(struct_name) => {
-                format!("{}_{}", struct_name, field_name).to_ascii_uppercase()
-            }
-            PrefixConfig::Custom(prefix) => {
-                format!("{}_{}", prefix, field_name).to_ascii_uppercase()
-            }
-            PrefixConfig::None => field_name.to_ascii_uppercase(),
+            PrefixConfig::StructName(s) | PrefixConfig::Custom(s) => Some(s),
+            PrefixConfig::None => None,
+        }
+    }
+
+    fn apply_to_field(&self, field_name: &str) -> String {
+        match self.as_prefix() {
+            Some(prefix) => format!("{}_{}", prefix, field_name).to_ascii_uppercase(),
+            None => field_name.to_ascii_uppercase(),
         }
     }
 }
@@ -50,6 +52,12 @@ impl PrefixConfig {
 /// - `#[env_cfg(default = "value")]` - specify default value  
 /// - `#[env_cfg(parse_with = "function_name")]` - use custom parser function (signature: `fn(String) -> T`)
 /// - `#[env_cfg(nested)]` - treat field as nested EnvConfig struct (calls T::from_env())
+///
+/// # Feature: `trace`
+///
+/// When the `trace` feature is enabled, the generated `from_env()` method will emit a
+/// `tracing::trace!` event with the loaded configuration struct. This requires the struct
+/// to implement `Debug`.
 ///
 #[proc_macro_derive(EnvConfig, attributes(env_cfg))]
 pub fn derive_env_cfg(input: TokenStream) -> TokenStream {
@@ -72,6 +80,7 @@ fn expand_env_cfg(
     prefix_config: &PrefixConfig,
 ) -> syn::Result<proc_macro2::TokenStream> {
     let name = &input.ident;
+    let name_str = name.to_string();
     let fields = match &input.data {
         Data::Struct(data) => match &data.fields {
             Fields::Named(fields) => &fields.named,
@@ -91,8 +100,8 @@ fn expand_env_cfg(
     };
 
     let field_assignments: Result<Vec<_>, _> = fields
-        .into_iter()
-        .map(|field| generate_field_assignment(field, &prefix_config))
+        .iter()
+        .map(|field| generate_field_assignment(field, prefix_config))
         .collect();
     let field_assignments = field_assignments?;
 
@@ -101,9 +110,11 @@ fn expand_env_cfg(
             type Error = ::env_cfg::EnvConfigError;
 
             fn from_env() -> Result<Self, Self::Error> {
-                Ok(Self {
+                let __result = Self {
                     #(#field_assignments,)*
-                })
+                };
+                ::env_cfg::trace_config!(&__result, #name_str);
+                Ok(__result)
             }
         }
     };
@@ -204,44 +215,40 @@ fn generate_field_assignment(
     for attr in &field.attrs {
         if attr.path().is_ident("env_cfg") {
             if let Meta::List(meta_list) = &attr.meta {
-                let nested_result = meta_list.parse_args_with(
+                let nested_metas = meta_list.parse_args_with(
                     syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
-                );
+                )?;
 
-                if let Ok(nested_metas) = nested_result {
-                    for nested in nested_metas {
-                        match nested {
-                            Meta::Path(path) if path.is_ident("skip") => {
-                                skip = true;
-                            }
-                            Meta::Path(path) if path.is_ident("nested") => {
-                                is_nested = true;
-                            }
-                            Meta::NameValue(name_value) if name_value.path.is_ident("env") => {
-                                if let syn::Expr::Lit(syn::ExprLit {
-                                    lit: Lit::Str(lit_str),
-                                    ..
-                                }) = &name_value.value
-                                {
-                                    env_name = lit_str.value();
-                                }
-                            }
-                            Meta::NameValue(name_value) if name_value.path.is_ident("default") => {
-                                default_expr = Some(name_value.value.clone());
-                            }
-                            Meta::NameValue(name_value)
-                                if name_value.path.is_ident("parse_with") =>
+                for nested in nested_metas {
+                    match nested {
+                        Meta::Path(path) if path.is_ident("skip") => {
+                            skip = true;
+                        }
+                        Meta::Path(path) if path.is_ident("nested") => {
+                            is_nested = true;
+                        }
+                        Meta::NameValue(name_value) if name_value.path.is_ident("env") => {
+                            if let syn::Expr::Lit(syn::ExprLit {
+                                lit: Lit::Str(lit_str),
+                                ..
+                            }) = &name_value.value
                             {
-                                parse_with = Some(name_value.value.clone());
+                                env_name = lit_str.value();
                             }
-                            other => {
-                                return Err(syn::Error::new(
-                                    other.span(),
-                                    format!(
-                                        "Unsupported field attribute. Supported attributes: {SUPPORTED_FIELD_ATTRIBUTES:?}"
-                                    ),
-                                ));
-                            }
+                        }
+                        Meta::NameValue(name_value) if name_value.path.is_ident("default") => {
+                            default_expr = Some(name_value.value.clone());
+                        }
+                        Meta::NameValue(name_value) if name_value.path.is_ident("parse_with") => {
+                            parse_with = Some(name_value.value.clone());
+                        }
+                        other => {
+                            return Err(syn::Error::new(
+                                other.span(),
+                                format!(
+                                    "Unsupported field attribute. Supported attributes: {SUPPORTED_FIELD_ATTRIBUTES:?}"
+                                ),
+                            ));
                         }
                     }
                 }
@@ -282,9 +289,9 @@ fn generate_field_assignment(
     if is_nested {
         return Ok(quote! {
             #field_name: #field_type::from_env()
-                .map_err(|e| ::env_cfg::EnvConfigError::Parse(
-                    format!("nested {}", stringify!(#field_type)),
-                    e.to_string()
+                .map_err(|e| ::env_cfg::EnvConfigError::Nested(
+                    stringify!(#field_type).to_string(),
+                    Box::new(e)
                 ))?
         });
     }

@@ -1,8 +1,10 @@
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
-use once_cell::sync::Lazy;
+static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
-static TEST_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
+fn get_test_lock() -> &'static Mutex<()> {
+    TEST_LOCK.get_or_init(|| Mutex::new(()))
+}
 
 // NOTE: this is a helper function that runs a test with a given array of env vars to set and
 // cleanup. This function MUST be used for all tests that run in parallel, even if they do not set
@@ -17,8 +19,8 @@ pub unsafe fn with_env_vars<U, F: FnOnce() -> U + std::panic::UnwindSafe>(
     vars: &[(&str, &str)],
     test: F,
 ) -> U {
-    // aquire lock
-    let _guard = TEST_LOCK.lock().unwrap();
+    // acquire lock
+    let _guard = get_test_lock().lock().unwrap();
     // set all vars
     for (key, value) in vars {
         unsafe { std::env::set_var(key, value) };

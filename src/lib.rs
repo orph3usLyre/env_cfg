@@ -101,6 +101,11 @@ use std::str::FromStr;
 // Re-export the derive macro
 pub use env_cfg_derive::EnvConfig;
 
+// Re-export tracing for use by the trace_config macro
+#[cfg(feature = "trace")]
+#[doc(hidden)]
+pub use tracing;
+
 /// Trait for loading configuration from environment variables.
 ///
 /// This trait provides an interface for loading configuration from environment variables.
@@ -158,6 +163,7 @@ pub trait EnvConfig: Sized {
 
 /// Error type for environment configuration loading.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum EnvConfigError {
     /// Environment variable is missing.
     #[error("Missing environment variable: `{0}`")]
@@ -165,17 +171,31 @@ pub enum EnvConfigError {
     /// Failed to parse environment variable value.
     #[error("Failed to parse environment variable: '{0}': {1}")]
     Parse(String, String),
+    /// Error from a nested EnvConfig struct.
+    #[error("Nested config `{0}` failed: {1}")]
+    Nested(String, Box<EnvConfigError>),
+}
+
+/// Convert a `std::env::VarError` to an `EnvConfigError`.
+fn var_error_to_env_config_error(name: &str, err: std::env::VarError) -> EnvConfigError {
+    match err {
+        std::env::VarError::NotPresent => EnvConfigError::Missing(name.to_string()),
+        std::env::VarError::NotUnicode(_) => {
+            EnvConfigError::Parse(name.to_string(), "Invalid Unicode".to_string())
+        }
+    }
 }
 
 // Helper functions for implementing the trait
 /// Load a required environment variable and parse it to the target type.
 /// Fails if the variable is not set or cannot be parsed.
+#[must_use = "this returns a Result that should be handled"]
 pub fn env_var<T>(name: &str) -> Result<T, EnvConfigError>
 where
     T: FromStr,
     T::Err: std::fmt::Display,
 {
-    let value = std::env::var(name).map_err(|_| EnvConfigError::Missing(name.to_string()))?;
+    let value = std::env::var(name).map_err(|e| var_error_to_env_config_error(name, e))?;
     value
         .parse::<T>()
         .map_err(|e| EnvConfigError::Parse(name.to_string(), e.to_string()))
@@ -183,6 +203,7 @@ where
 
 /// Load an optional environment variable and parse it to the target type.
 /// Returns `None` if the variable is not set.
+#[must_use = "this returns a Result that should be handled"]
 pub fn env_var_optional<T>(name: &str) -> Result<Option<T>, EnvConfigError>
 where
     T: FromStr,
@@ -194,26 +215,14 @@ where
             .map(Some)
             .map_err(|e| EnvConfigError::Parse(name.to_string(), e.to_string())),
         Err(std::env::VarError::NotPresent) => Ok(None),
-        Err(std::env::VarError::NotUnicode(_)) => Err(EnvConfigError::Parse(
-            name.to_string(),
-            "Invalid Unicode".to_string(),
-        )),
-    }
-}
-
-/// Load an environment variable with a default value if not present.
-pub fn env_var_or<T>(name: &str, default: T) -> Result<T, EnvConfigError>
-where
-    T: FromStr,
-    T::Err: std::fmt::Display,
-{
-    match env_var_optional(name)? {
-        Some(value) => Ok(value),
-        None => Ok(default),
+        Err(e) => Err(var_error_to_env_config_error(name, e)),
     }
 }
 
 /// Load an environment variable with a string default that gets parsed if env var not present.
+///
+/// This is used by the derive macro for `#[env_cfg(default = "value")]` attributes.
+#[must_use = "this returns a Result that should be handled"]
 pub fn env_var_or_parse<T>(name: &str, default: &str) -> Result<T, EnvConfigError>
 where
     T: FromStr,
@@ -226,21 +235,19 @@ where
         Err(std::env::VarError::NotPresent) => default
             .parse::<T>()
             .map_err(|e| EnvConfigError::Parse(format!("default for {}", name), e.to_string())),
-        Err(std::env::VarError::NotUnicode(_)) => Err(EnvConfigError::Parse(
-            name.to_string(),
-            "Invalid Unicode".to_string(),
-        )),
+        Err(e) => Err(var_error_to_env_config_error(name, e)),
     }
 }
 
 /// Load a required environment variable and parse it using a custom parser function.
 /// The parser function should take a String and return the target type T.
 /// Any panics or errors from the parser function will bubble up naturally.
+#[must_use = "this returns a Result that should be handled"]
 pub fn env_var_with_parser<T, F>(name: &str, parser: F) -> Result<T, EnvConfigError>
 where
     F: FnOnce(String) -> T,
 {
-    let value = std::env::var(name).map_err(|_| EnvConfigError::Missing(name.to_string()))?;
+    let value = std::env::var(name).map_err(|e| var_error_to_env_config_error(name, e))?;
     Ok(parser(value))
 }
 
@@ -248,6 +255,7 @@ where
 /// Returns None if the variable is not set.
 /// The parser function should take a String and return the target type T.
 /// Any panics or errors from the parser function will bubble up naturally.
+#[must_use = "this returns a Result that should be handled"]
 pub fn env_var_optional_with_parser<T, F>(
     name: &str,
     parser: F,
@@ -258,9 +266,36 @@ where
     match std::env::var(name) {
         Ok(value) => Ok(Some(parser(value))),
         Err(std::env::VarError::NotPresent) => Ok(None),
-        Err(std::env::VarError::NotUnicode(_)) => Err(EnvConfigError::Parse(
-            name.to_string(),
-            "Invalid Unicode".to_string(),
-        )),
+        Err(e) => Err(var_error_to_env_config_error(name, e)),
     }
+}
+
+/// Log the loaded configuration using tracing.
+///
+/// This macro is called by the generated `from_env()` implementation.
+/// When the `trace` feature is enabled, it emits a `tracing::trace!` event.
+/// When the feature is disabled, this is a no-op.
+///
+/// Using a macro avoids requiring `Debug` on the config type when tracing is disabled.
+#[doc(hidden)]
+#[macro_export]
+#[cfg(feature = "trace")]
+macro_rules! trace_config {
+    ($config:expr, $name:expr) => {
+        $crate::tracing::trace!(config = ?$config, "loaded {}", $name);
+    };
+}
+
+/// Log the loaded configuration using tracing.
+///
+/// This macro is called by the generated `from_env()` implementation.
+/// When the `trace` feature is enabled, it emits a `tracing::trace!` event.
+/// When the feature is disabled, this is a no-op.
+///
+/// Using a macro avoids requiring `Debug` on the config type when tracing is disabled.
+#[doc(hidden)]
+#[macro_export]
+#[cfg(not(feature = "trace"))]
+macro_rules! trace_config {
+    ($config:expr, $name:expr) => {};
 }

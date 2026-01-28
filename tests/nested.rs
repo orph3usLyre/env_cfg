@@ -108,10 +108,14 @@ fn should_propagate_nested_config_errors() {
 
     let result = unsafe { common::with_env_vars(ENV_VARS, AppConfig::from_env) };
 
-    if let Err(EnvConfigError::Parse(var, _)) = result {
-        assert!(var.contains("nested DatabaseConfig"));
+    if let Err(EnvConfigError::Nested(struct_name, inner)) = result {
+        assert_eq!(struct_name, "DatabaseConfig");
+        assert!(matches!(*inner, EnvConfigError::Parse(_, _)));
     } else {
-        panic!("Expected Parse error with nested context");
+        panic!(
+            "Expected Nested error wrapping a Parse error, got: {:?}",
+            result
+        );
     }
 }
 
@@ -125,10 +129,14 @@ fn should_fail_when_nested_required_vars_missing() {
 
     let result = unsafe { common::with_env_vars(ENV_VARS, AppConfig::from_env) };
 
-    if let Err(EnvConfigError::Parse(var, _)) = result {
-        assert!(var.contains("nested DatabaseConfig"));
+    if let Err(EnvConfigError::Nested(struct_name, inner)) = result {
+        assert_eq!(struct_name, "DatabaseConfig");
+        assert!(matches!(*inner, EnvConfigError::Missing(_)));
     } else {
-        panic!("Expected Parse error with nested context");
+        panic!(
+            "Expected Nested error wrapping a Missing error, got: {:?}",
+            result
+        );
     }
 }
 
