@@ -180,6 +180,7 @@ fn var_error_to_env_config_error(name: &str, err: std::env::VarError) -> EnvConf
 // Helper functions for implementing the trait
 /// Load a required environment variable and parse it to the target type.
 /// Fails if the variable is not set or cannot be parsed.
+#[must_use = "this returns a Result that should be handled"]
 pub fn env_var<T>(name: &str) -> Result<T, EnvConfigError>
 where
     T: FromStr,
@@ -193,6 +194,7 @@ where
 
 /// Load an optional environment variable and parse it to the target type.
 /// Returns `None` if the variable is not set.
+#[must_use = "this returns a Result that should be handled"]
 pub fn env_var_optional<T>(name: &str) -> Result<Option<T>, EnvConfigError>
 where
     T: FromStr,
@@ -208,19 +210,10 @@ where
     }
 }
 
-/// Load an environment variable with a default value if not present.
-pub fn env_var_or<T>(name: &str, default: T) -> Result<T, EnvConfigError>
-where
-    T: FromStr,
-    T::Err: std::fmt::Display,
-{
-    match env_var_optional(name)? {
-        Some(value) => Ok(value),
-        None => Ok(default),
-    }
-}
-
 /// Load an environment variable with a string default that gets parsed if env var not present.
+///
+/// This is used by the derive macro for `#[env_cfg(default = "value")]` attributes.
+#[must_use = "this returns a Result that should be handled"]
 pub fn env_var_or_parse<T>(name: &str, default: &str) -> Result<T, EnvConfigError>
 where
     T: FromStr,
@@ -240,11 +233,12 @@ where
 /// Load a required environment variable and parse it using a custom parser function.
 /// The parser function should take a String and return the target type T.
 /// Any panics or errors from the parser function will bubble up naturally.
+#[must_use = "this returns a Result that should be handled"]
 pub fn env_var_with_parser<T, F>(name: &str, parser: F) -> Result<T, EnvConfigError>
 where
     F: FnOnce(String) -> T,
 {
-    let value = std::env::var(name).map_err(|_| EnvConfigError::Missing(name.to_string()))?;
+    let value = std::env::var(name).map_err(|e| var_error_to_env_config_error(name, e))?;
     Ok(parser(value))
 }
 
@@ -252,6 +246,7 @@ where
 /// Returns None if the variable is not set.
 /// The parser function should take a String and return the target type T.
 /// Any panics or errors from the parser function will bubble up naturally.
+#[must_use = "this returns a Result that should be handled"]
 pub fn env_var_optional_with_parser<T, F>(
     name: &str,
     parser: F,
