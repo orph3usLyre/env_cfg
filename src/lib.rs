@@ -101,6 +101,11 @@ use std::str::FromStr;
 // Re-export the derive macro
 pub use env_cfg_derive::EnvConfig;
 
+// Re-export tracing for use by the trace_config macro
+#[cfg(feature = "trace")]
+#[doc(hidden)]
+pub use tracing;
+
 /// Trait for loading configuration from environment variables.
 ///
 /// This trait provides an interface for loading configuration from environment variables.
@@ -277,7 +282,7 @@ where
 #[cfg(feature = "trace")]
 macro_rules! trace_config {
     ($config:expr, $name:expr) => {
-        ::tracing::trace!(config = ?$config, "loaded {}", $name);
+        $crate::tracing::trace!(config = ?$config, "loaded {}", $name);
     };
 }
 
