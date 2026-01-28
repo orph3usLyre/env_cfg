@@ -1,6 +1,6 @@
 [package]
 name = "env_cfg"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2024"
 authors = ["orph3uslyre"]
 description = "Simple derive macro library for loading configuration structs from ENV variables"
@@ -14,6 +14,6 @@ default = []
 trace = ["dep:tracing"]
 
 [dependencies]
-env_cfg_derive = { path = "env_cfg_derive", version = "0.2.0" }
-thiserror = "2.0.12"
+env_cfg_derive = { path = "env_cfg_derive", version = "0.3.0" }
+thiserror = "2.0.18"
 tracing = { version = "0.1", optional = true }
