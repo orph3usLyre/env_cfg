@@ -23,15 +23,17 @@ enum PrefixConfig {
 }
 
 impl PrefixConfig {
-    fn apply_to_field(&self, field_name: &str) -> String {
+    fn as_prefix(&self) -> Option<&str> {
         match self {
-            PrefixConfig::StructName(struct_name) => {
-                format!("{}_{}", struct_name, field_name).to_ascii_uppercase()
-            }
-            PrefixConfig::Custom(prefix) => {
-                format!("{}_{}", prefix, field_name).to_ascii_uppercase()
-            }
-            PrefixConfig::None => field_name.to_ascii_uppercase(),
+            PrefixConfig::StructName(s) | PrefixConfig::Custom(s) => Some(s),
+            PrefixConfig::None => None,
+        }
+    }
+
+    fn apply_to_field(&self, field_name: &str) -> String {
+        match self.as_prefix() {
+            Some(prefix) => format!("{}_{}", prefix, field_name).to_ascii_uppercase(),
+            None => field_name.to_ascii_uppercase(),
         }
     }
 }
@@ -91,8 +93,8 @@ fn expand_env_cfg(
     };
 
     let field_assignments: Result<Vec<_>, _> = fields
-        .into_iter()
-        .map(|field| generate_field_assignment(field, &prefix_config))
+        .iter()
+        .map(|field| generate_field_assignment(field, prefix_config))
         .collect();
     let field_assignments = field_assignments?;
 
@@ -210,39 +212,37 @@ fn generate_field_assignment(
 
                 for nested in nested_metas {
                     match nested {
-                            Meta::Path(path) if path.is_ident("skip") => {
-                                skip = true;
-                            }
-                            Meta::Path(path) if path.is_ident("nested") => {
-                                is_nested = true;
-                            }
-                            Meta::NameValue(name_value) if name_value.path.is_ident("env") => {
-                                if let syn::Expr::Lit(syn::ExprLit {
-                                    lit: Lit::Str(lit_str),
-                                    ..
-                                }) = &name_value.value
-                                {
-                                    env_name = lit_str.value();
-                                }
-                            }
-                            Meta::NameValue(name_value) if name_value.path.is_ident("default") => {
-                                default_expr = Some(name_value.value.clone());
-                            }
-                            Meta::NameValue(name_value)
-                                if name_value.path.is_ident("parse_with") =>
+                        Meta::Path(path) if path.is_ident("skip") => {
+                            skip = true;
+                        }
+                        Meta::Path(path) if path.is_ident("nested") => {
+                            is_nested = true;
+                        }
+                        Meta::NameValue(name_value) if name_value.path.is_ident("env") => {
+                            if let syn::Expr::Lit(syn::ExprLit {
+                                lit: Lit::Str(lit_str),
+                                ..
+                            }) = &name_value.value
                             {
-                                parse_with = Some(name_value.value.clone());
-                            }
-                            other => {
-                                return Err(syn::Error::new(
-                                    other.span(),
-                                    format!(
-                                        "Unsupported field attribute. Supported attributes: {SUPPORTED_FIELD_ATTRIBUTES:?}"
-                                    ),
-                                ));
+                                env_name = lit_str.value();
                             }
                         }
+                        Meta::NameValue(name_value) if name_value.path.is_ident("default") => {
+                            default_expr = Some(name_value.value.clone());
+                        }
+                        Meta::NameValue(name_value) if name_value.path.is_ident("parse_with") => {
+                            parse_with = Some(name_value.value.clone());
+                        }
+                        other => {
+                            return Err(syn::Error::new(
+                                other.span(),
+                                format!(
+                                    "Unsupported field attribute. Supported attributes: {SUPPORTED_FIELD_ATTRIBUTES:?}"
+                                ),
+                            ));
+                        }
                     }
+                }
             }
         }
     }

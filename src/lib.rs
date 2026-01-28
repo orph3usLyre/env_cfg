@@ -158,6 +158,7 @@ pub trait EnvConfig: Sized {
 
 /// Error type for environment configuration loading.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum EnvConfigError {
     /// Environment variable is missing.
     #[error("Missing environment variable: `{0}`")]
